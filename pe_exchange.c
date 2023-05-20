@@ -76,7 +76,7 @@ Exchange *create_exchange(const char *product_file)
     {
         if (fgets(line, sizeof(line), file) == NULL)
         {
-            fprintf(stderr, "[PEX] Invalid product file format\n");
+            fprintf(stderr, "[PEX]\tInvalid product file format\n");
             fclose(file);
             destroy_exchange(exchange);
             return NULL;
@@ -91,9 +91,9 @@ Exchange *create_exchange(const char *product_file)
 
     fclose(file);
     // [PEX] Starting
-    printf("[PEX] Starting\n");
+    printf("[PEX]\tStarting\n");
     // [PEX] Trading 2 products: GPU Router
-    printf("[PEX] Trading %d products: ", exchange->num_products);
+    printf("[PEX]\tTrading %d products: ", exchange->num_products);
     for (int i = 0; i < exchange->num_products; i++)
     {
         printf("%s ", exchange->products[i]);
@@ -109,7 +109,7 @@ Trader *create_trader(int id, const char *bin_path)
     Trader *trader = (Trader *)malloc(sizeof(Trader));
     if (!trader)
     {
-        fprintf(stderr, "[PEX] Failed to allocate memory for Trader\n");
+        fprintf(stderr, "[PEX]\tFailed to allocate memory for Trader\n");
         return NULL;
     }
 
@@ -118,7 +118,7 @@ Trader *create_trader(int id, const char *bin_path)
     trader->bin_path = strdup(bin_path);
     if (!trader->bin_path)
     {
-        fprintf(stderr, "[PEX] Failed to duplicate bin_path\n");
+        fprintf(stderr, "[PEX]\tFailed to duplicate bin_path\n");
         return NULL;
     }
 
@@ -132,14 +132,14 @@ Trader *create_trader(int id, const char *bin_path)
         // TODO check if fifo existed
         if (mkfifo(pipe_exchange, 0666) == -1)
         {
-            fprintf(stderr, "[PEX] Failed to create pipe to exchange\n");
+            fprintf(stderr, "[PEX]\tFailed to create pipe to exchange\n");
             return NULL;
         }
-        printf("[PEX] Created FIFO %s\n", pipe_exchange);
+        printf("[PEX]\tCreated FIFO %s\n", pipe_exchange);
     }
     else
     {
-        printf("[PEX] FIFO existed %s\n", pipe_exchange);
+        printf("[PEX]\tFIFO existed %s\n", pipe_exchange);
     }
 
     sprintf(pipe_trader, "/tmp/pe_trader_%d", id);
@@ -148,21 +148,21 @@ Trader *create_trader(int id, const char *bin_path)
     {
         if (mkfifo(pipe_trader, 0666) == -1)
         {
-            fprintf(stderr, "[PEX] Failed to create pipe from exchange\n");
+            fprintf(stderr, "[PEX]\tFailed to create pipe from exchange\n");
             return NULL;
         }
-        printf("[PEX] Created FIFO %s\n", pipe_trader);
+        printf("[PEX]\tCreated FIFO %s\n", pipe_trader);
     }
     else
     {
-        printf("[PEX] FIFO existed %s\n", pipe_trader);
+        printf("[PEX]\tFIFO existed %s\n", pipe_trader);
     }
 
     // 创建新的进程，然后使用exec()系列函数来运行trader程序
     pid_t pid = fork();
     if (pid == -1)
     {
-        fprintf(stderr, "[PEX] Failed to fork new process\n");
+        fprintf(stderr, "[PEX]\tFailed to fork new process\n");
         return NULL;
     }
     // Child process
@@ -171,30 +171,30 @@ Trader *create_trader(int id, const char *bin_path)
         char trader_id_str[16];
         sprintf(trader_id_str, "%d", id);
         execl(trader->bin_path, trader->bin_path, trader_id_str, (char *)NULL);
-        fprintf(stderr, "[PEX] Failed to exec trader binary\n");
+        fprintf(stderr, "[PEX]\tFailed to exec trader binary\n");
         exit(EXIT_FAILURE);
     }
     else
     { // Parent process
         trader->pid = pid;
     }
-    printf("[PEX] Starting trader %d (%s)\n", id, bin_path);
+    printf("[PEX]\tStarting trader %d (%s)\n", id, bin_path);
 
     trader->fd_exchange = open(pipe_exchange, O_WRONLY);
     if (trader->fd_exchange == -1)
     {
-        fprintf(stderr, "[PEX] Failed to open pipe to exchange\n");
+        fprintf(stderr, "[PEX]\tFailed to open pipe to exchange\n");
         return NULL;
     }
-    printf("[PEX] Connected to %s\n", pipe_exchange);
+    printf("[PEX]\tConnected to %s\n", pipe_exchange);
 
     trader->fd_trader = open(pipe_trader, O_RDONLY);
     if (trader->fd_trader == -1)
     {
-        fprintf(stderr, "[PEX] Failed to open pipe from exchange\n");
+        fprintf(stderr, "[PEX]\tFailed to open pipe from exchange\n");
         return NULL;
     }
-    printf("[PEX] Connected to %s\n", pipe_trader);
+    printf("[PEX]\tConnected to %s\n", pipe_trader);
 
     return trader;
 }
@@ -207,21 +207,21 @@ void remove_trader(Exchange *exchange, pid_t pid)
         if (trader->pid == pid)
         {
             // 子进程已退出，打印消息
-            printf("[PEX] Trader %d(pid %d) disconnected\n", trader->id, trader->pid);
+            printf("[PEX]\tTrader %d(pid %d) disconnected\n", trader->id, trader->pid);
             trader->disconnected = true;
         }
     }
-    fprintf(stderr, "[PEX] Try to remove trader pid %d, but not found\n", pid);
+    fprintf(stderr, "[PEX]\tTry to remove trader pid %d, but not found\n", pid);
 }
 
 bool process_trader_commands(Exchange *exchange, Trader *trader)
 {
     printf("[PEX]\tProcessing commands from trader %d\n", trader->id);
-    FILE *file_exchange = fdopen(trader->fd_trader, "w");
+    FILE *file_exchange = fdopen(trader->fd_trader, "r");
     char command[1024];
     if (fgets(command, sizeof(command), file_exchange) == NULL)
     {
-        fprintf(stderr, "[PEX] Failed to read from named pipe, %d", trader->id);
+        fprintf(stderr, "[PEX]\tFailed to read from named pipe, %d", trader->id);
         return false;
     }
     // [T0] Parsing command: <BUY 0 GPU 30 500>
@@ -391,8 +391,8 @@ void monitor_traders(Exchange *exchange)
         }
         if (all_disconnected)
         {
-            printf("[PEX] Trading completed\n");
-            printf("[PEX] Exchange fees collected: $%d\n", exchange->collected_fees);
+            printf("[PEX]\tTrading completed\n");
+            printf("[PEX]\tExchange fees collected: $%d\n", exchange->collected_fees);
             exit(0);
             return;
         }
@@ -693,7 +693,7 @@ int main(int argc, char *argv[])
 
     if (sigaction(SIGUSR1, &act, NULL) == -1)
     { // 将 SIGUSR1 信号与处理函数关联
-        fprintf(stderr, "[PEX] sigaction");
+        fprintf(stderr, "[PEX]\tsigaction");
         return 1;
     }
 
@@ -702,7 +702,7 @@ int main(int argc, char *argv[])
     exg = create_exchange(product_file);
     if (exg == NULL)
     {
-        fprintf(stderr, "[PEX] Failed to load product file: %s\n", product_file);
+        fprintf(stderr, "[PEX]\tFailed to load product file: %s\n", product_file);
         return 1;
     }
 
@@ -714,39 +714,39 @@ int main(int argc, char *argv[])
         exg->traders[i] = create_trader(i, argv[i + 2]);
         if (!exg->traders[i])
         {
-            fprintf(stderr, "[PEX] Failed to create trader: %s, %d\n", argv[i + 2], i);
+            fprintf(stderr, "[PEX]\tFailed to create trader: %s, %d\n", argv[i + 2], i);
             return 1;
         }
         else
         {
-            printf("[PEX] Created trader: %s, %d\n", argv[i + 2], i);
+            printf("[PEX]\tCreated trader: %s, %d\n", argv[i + 2], i);
         }
     }
-    printf("[PEX] Created %d traders\n", exg->num_traders);
+    printf("[PEX]\tCreated %d traders\n", exg->num_traders);
 
     // 向所有的交易员发送"MARKET OPEN"消息，并发送SIGUSR1信号
     for (int i = 0; i < exg->num_traders; i++)
     {
         if (!send_message_to_trader(exg->traders[i], "MARKET OPEN;"))
         {
-            fprintf(stderr, "[PEX] Failed to send message to trader: %d\n", i);
+            fprintf(stderr, "[PEX]\tFailed to send message to trader: %d\n", i);
             return 1;
         }
         else
         {
-            printf("[PEX] sent 'MARKET OPEN;' to trader %d\n", i);
+            printf("[PEX]\tsent 'MARKET OPEN;' to trader %d\n", i);
         }
     }
     for (int i = 0; i < exg->num_traders; i++)
     {
         if (kill(exg->traders[i]->pid, SIGUSR1) == -1)
         {
-            fprintf(stderr, "[PEX] Failed to send signal to trader: %d\n", i);
+            fprintf(stderr, "[PEX]\tFailed to send signal to trader: %d\n", i);
             return 1;
         }
         else
         {
-            printf("[PEX] sent SIGUSR1 to trader %d\n", i);
+            printf("[PEX]\tsent SIGUSR1 to trader %d\n", i);
         }
     }
 
