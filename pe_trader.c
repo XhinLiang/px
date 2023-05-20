@@ -26,7 +26,7 @@ int fd_trader;
 void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int quantity, int price)
 {
     char message[MESSAGE_BUFF_SIZE];
-    sprintf(message, "%d %s %s %d %d\n", current_order_id++, order_type == BUY ? "BUY" : "SELL", item, quantity, price);
+    sprintf(message, "%s %d %s %d %d\n", order_type == BUY ? "BUY" : "SELL", current_order_id++, item, quantity, price);
     printf("[T%d]\tSending message: %s\n", trader_id, message);
     size_t message_len = strlen(message);
     ssize_t bytes_written = write(fd_trader, message, message_len);
@@ -70,7 +70,7 @@ void process_message(pid_t exchange_pid, const char *message)
 
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
-    printf("[T%d]\tReceived SIGUSR1\n", trader_id);
+    printf("[T%d]\tReceived SIGUSR1 from pid: %d\n", trader_id, info->si_pid);
     char buffer[MESSAGE_BUFF_SIZE];
     int num_bytes = read(fd_exchange, buffer, MESSAGE_BUFF_SIZE - 1);
     if (num_bytes > 0)

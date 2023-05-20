@@ -214,7 +214,34 @@ void remove_trader(Exchange *exchange, pid_t pid)
     fprintf(stderr, "[PEX]\tTry to remove trader pid %d, but not found\n", pid);
 }
 
-bool process_trader_commands(Exchange *exchange, Trader *trader)
+void ack_message(Exchange *exchange, Trader *trader, char *command_type, int order_id, char *product, int qty, int price)
+{
+    char ack_message[1024];
+    sprintf(ack_message, "ACCEPTED %d;", order_id);
+    send_message_to_trader(trader, ack_message);
+    kill(trader->pid, SIGUSR1);
+
+    // Exchange writes to all other traders
+    char other_trader_message[1024];
+    // MARKET SELL CPU 2 300;
+    sprintf(other_trader_message, "MARKET %s %s %d %d;", command_type, product, qty, price);
+    for (int i = 0; i < exchange->num_traders; i++)
+    {
+        Trader *other_trader = exchange->traders[i];
+        if (other_trader->id == trader->id)
+        {
+            continue;
+        }
+        send_message_to_trader(other_trader, other_trader_message);
+    }
+    for (int i = 0; i < exchange->num_traders; i++)
+    {
+        Trader *other_trader = exchange->traders[i];
+        kill(other_trader->pid, SIGUSR1);
+    }
+}
+
+void process_trader_commands(Exchange *exchange, Trader *trader)
 {
     printf("[PEX]\tProcessing commands from trader %d\n", trader->id);
     FILE *file_exchange = fdopen(trader->fd_trader, "r");
@@ -222,11 +249,9 @@ bool process_trader_commands(Exchange *exchange, Trader *trader)
     if (fgets(command, sizeof(command), file_exchange) == NULL)
     {
         fprintf(stderr, "[PEX]\tFailed to read from named pipe, %d", trader->id);
-        return false;
+        return;
     }
     // [T0] Parsing command: <BUY 0 GPU 30 500>
-    printf("[T%d] Parsing command: %s", trader->id, command);
-
     char command_type[10];
     int order_id;
     char product[64];
@@ -236,25 +261,38 @@ bool process_trader_commands(Exchange *exchange, Trader *trader)
     // 解析命令字符串
     if (sscanf(command, "%s %d %s %d %d;", command_type, &order_id, product, &qty, &price) == 5)
     {
-        if (strcmp(command_type, "BUY") == 0)
+        printf("[PEX]\tParsed command: %s %d %s %d %d\n", command_type, order_id, product, qty, price);
+        if (strcmp(command_type, "SELL") == 0 || strcmp(command_type, "BUY") == 0)
         {
-            return add_order(exchange, trader->id, BUY, product, qty, price);
-        }
-        if (strcmp(command_type, "SELL") == 0)
-        {
-            return add_order(exchange, trader->id, SELL, product, qty, price);
+            OrderType type = (strcmp(command_type, "SELL") == 0) ? SELL : BUY;
+            if (add_order(exchange, trader->id, type, order_id, product, qty, price))
+            {
+                match_orders(exchange);
+                ack_message(exchange, trader, command_type, order_id, product, qty, price);
+            }
+            return;
         }
         if (strcmp(command_type, "AMEND") == 0)
         {
-            return amend_order(exchange, trader->id, order_id, qty, price);
+            if (amend_order(exchange, trader->id, order_id, qty, price))
+            {
+                match_orders(exchange);
+                ack_message(exchange, trader, command_type, order_id, product, qty, price);
+            }
+            return;
         }
         if (strcmp(command_type, "CANCEL") == 0)
         {
-            return remove_order(exchange, trader->id, order_id);
+            if (remove_order(exchange, trader->id, order_id))
+            {
+                ack_message(exchange, trader, command_type, order_id, product, qty, price);
+            }
+            return;
         }
+        fprintf(stderr, "[PEX]\tUnknown command type: %s", command_type);
+        return;
     }
-    // 无法解析的命令
-    return false;
+    fprintf(stderr, "[PEX]\tFailed to parse command: %s", command);
 }
 
 int compare_sell_orders(const void *a, const void *b)
@@ -285,7 +323,7 @@ int compare_buy_orders(const void *a, const void *b)
     }
 }
 
-void process_orders(Exchange *exchange)
+void match_orders(Exchange *exchange)
 {
     int max_orders_num = exchange->num_orders;
     Order **sell_orders = (Order **)malloc(max_orders_num * sizeof(Order *));
@@ -295,6 +333,7 @@ void process_orders(Exchange *exchange)
 
     while (true)
     {
+        printf("[PEX]\tMatching orders, orders num: %d\n", exchange->num_orders);
         bool deal = false;
         for (int i = 0; i < exchange->num_products; i++)
         {
@@ -303,6 +342,7 @@ void process_orders(Exchange *exchange)
                 break;
             }
             char *product = exchange->products[i];
+            printf("[PEX]\tMatching orders for product %s\n", product);
 
             // 初始化 sell_orders & buy_orders
             memset(sell_orders, 0, max_orders_num * sizeof(Order *));
@@ -323,6 +363,12 @@ void process_orders(Exchange *exchange)
                     sell_orders[sell_orders_num++] = order;
                 }
             }
+            if (sell_orders_num == 0)
+            {
+                printf("[PEX]\t No sell orders for product %s\n", product);
+                continue;
+            }
+            printf("[PEX]\t %s Sell orders: %d\n", product, sell_orders_num);
 
             // 遍历 exchange->orders，把合适的放入 buy_orders，并更新 buy_orders_num
             for (int j = 0; j < exchange->num_orders; j++)
@@ -337,7 +383,14 @@ void process_orders(Exchange *exchange)
                     buy_orders[buy_orders_num++] = order;
                 }
             }
+            if (buy_orders_num == 0)
+            {
+                printf("[PEX]\t No buy orders for product %s\n", product);
+                continue;
+            }
+            printf("[PEX]\t %s Buy orders: %d\n", product, buy_orders_num);
 
+            // 按价格排序
             qsort(sell_orders, sell_orders_num, sizeof(Order *), compare_sell_orders);
             qsort(buy_orders, buy_orders_num, sizeof(Order *), compare_buy_orders);
 
@@ -361,6 +414,7 @@ void process_orders(Exchange *exchange)
                 }
             }
         }
+        printf("[PEX]\tMatching orders completed, dealed: %d\n", deal);
         if (!deal)
         {
             break;
@@ -371,10 +425,10 @@ void process_orders(Exchange *exchange)
     free(sell_orders);
     free(buy_orders);
 
-    monitor_traders(exchange);
+    check_trader_status(exchange);
 }
 
-void monitor_traders(Exchange *exchange)
+void check_trader_status(Exchange *exchange)
 {
     int status;
     while (true)
@@ -398,14 +452,13 @@ void monitor_traders(Exchange *exchange)
         }
 
         pid_t pid = waitpid(-1, &status, WNOHANG);
+        printf("[PEX]\tChild process %d exited\n", pid);
         if (pid > 0)
         {
-
             remove_trader(exchange, pid);
         }
         else
         {
-            // 没有任何子进程退出
             return;
         }
     }
@@ -589,11 +642,11 @@ void update_account(Trader *trader, int amount)
     trader->balance += amount;
 }
 
-bool add_order(Exchange *exchange, int trader_id, OrderType type, char *product, int quantity, int price)
+bool add_order(Exchange *exchange, int trader_id, OrderType type, int order_id, char *product, int quantity, int price)
 {
     // 创建新的Order并设置相关属性
     Order *order = (Order *)malloc(sizeof(Order));
-    order->id = exchange->num_orders; // Assign a unique ID to the order
+    order->id = order_id;
     order->trader_id = trader_id;
     order->type = type;
     order->product = product;
@@ -605,7 +658,7 @@ bool add_order(Exchange *exchange, int trader_id, OrderType type, char *product,
     exchange->orders[exchange->num_orders] = order;
     exchange->num_orders++;
 
-    process_orders(exchange);
+    printf("[PEX]\tNew order id: %d, trader: %d, total orders: %d\n", order_id, trader_id, exchange->num_orders);
     return true;
 }
 
@@ -634,7 +687,6 @@ bool amend_order(Exchange *exchange, int trader_id, int order_id, int new_quanti
         {
             exchange->orders[i]->quantity = new_quantity;
             exchange->orders[i]->price = new_price;
-            process_orders(exchange);
             return true;
         }
     }
@@ -653,10 +705,9 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
     // TODO 统一用 \t 替换空格
     pid_t trader_pid = info->si_pid;
-    printf("[PEX]\tReceived SIGUSR1 from trader: %d\n", trader_pid);
+    printf("[PEX]\tReceived SIGUSR1 from pid: %d\n", trader_pid);
     // 获取发送信号的进程 ID
     Trader *trader = NULL;
-    printf("[PEX]\tReceived SIGUSR1 hehe\n");
     for (int i = 0; i < exg->num_traders; i++)
     {
         printf("[PEX]\tChecking trader %d with PID: %d\n", exg->traders[i]->id, exg->traders[i]->pid);
@@ -672,10 +723,7 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
         return;
     }
     printf("[PEX]\tFound trader %d with PID: %d sent signal\n", trader->id, trader_pid);
-    if (process_trader_commands(exg, trader))
-    {
-        process_orders(exg);
-    }
+    process_trader_commands(exg, trader);
 }
 
 int main(int argc, char *argv[])
