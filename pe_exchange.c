@@ -452,7 +452,6 @@ void check_trader_status(Exchange *exchange)
         }
 
         pid_t pid = waitpid(-1, &status, WNOHANG);
-        printf("[PEX]\tChild process %d exited\n", pid);
         if (pid > 0)
         {
             remove_trader(exchange, pid);

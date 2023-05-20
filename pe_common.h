@@ -3,6 +3,16 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #define MAX_TRADERS 10
 #define MAX_PRODUCTS 50
