@@ -119,7 +119,6 @@ Trader *create_trader(int id, const char *bin_path)
     if (!trader->bin_path)
     {
         fprintf(stderr, "[PEX] Failed to duplicate bin_path\n");
-        destroy_trader(trader);
         return NULL;
     }
 
@@ -134,7 +133,6 @@ Trader *create_trader(int id, const char *bin_path)
         if (mkfifo(pipe_exchange, 0666) == -1)
         {
             fprintf(stderr, "[PEX] Failed to create pipe to exchange\n");
-            destroy_trader(trader);
             return NULL;
         }
         printf("[PEX] Created FIFO %s\n", pipe_exchange);
@@ -151,8 +149,6 @@ Trader *create_trader(int id, const char *bin_path)
         if (mkfifo(pipe_trader, 0666) == -1)
         {
             fprintf(stderr, "[PEX] Failed to create pipe from exchange\n");
-            unlink(pipe_exchange);
-            destroy_trader(trader);
             return NULL;
         }
         printf("[PEX] Created FIFO %s\n", pipe_trader);
@@ -167,11 +163,6 @@ Trader *create_trader(int id, const char *bin_path)
     if (pid == -1)
     {
         fprintf(stderr, "[PEX] Failed to fork new process\n");
-        close(trader->fd_exchange);
-        close(trader->fd_trader);
-        unlink(pipe_exchange);
-        unlink(pipe_trader);
-        destroy_trader(trader);
         return NULL;
     }
     // Child process
@@ -193,9 +184,6 @@ Trader *create_trader(int id, const char *bin_path)
     if (trader->fd_exchange == -1)
     {
         fprintf(stderr, "[PEX] Failed to open pipe to exchange\n");
-        unlink(pipe_exchange);
-        unlink(pipe_trader);
-        destroy_trader(trader);
         return NULL;
     }
     printf("[PEX] Connected to %s\n", pipe_exchange);
@@ -204,10 +192,6 @@ Trader *create_trader(int id, const char *bin_path)
     if (trader->fd_trader == -1)
     {
         fprintf(stderr, "[PEX] Failed to open pipe from exchange\n");
-        close(trader->fd_exchange);
-        unlink(pipe_exchange);
-        unlink(pipe_trader);
-        destroy_trader(trader);
         return NULL;
     }
     printf("[PEX] Connected to %s\n", pipe_trader);
@@ -722,8 +706,10 @@ int main(int argc, char *argv[])
         traders[i] = create_trader(i, argv[i + 2]);
         if (!traders[i])
         {
-            fprintf(stderr, "[PEX] Failed to create trader: %s\n", argv[i + 2]);
+            fprintf(stderr, "[PEX] Failed to create trader: %s, %d\n", argv[i + 2], i);
             return 1;
+        } else {
+            printf("[PEX] Created trader: %s, %d\n", argv[i + 2], i);
         }
     }
     exchange->num_traders = num_traders;
@@ -736,6 +722,8 @@ int main(int argc, char *argv[])
         {
             fprintf(stderr, "[PEX] Failed to send message to trader: %d\n", i);
             return 1;
+        } else {
+            printf("[PEX] sent 'MARKET OPEN;' to trader %d\n", i);
         }
     }
     for (int i = 0; i < num_traders; i++)
@@ -744,6 +732,8 @@ int main(int argc, char *argv[])
         {
             fprintf(stderr, "[PEX] Failed to send signal to trader: %d\n", i);
             return 1;
+        } else {
+            printf("[PEX] sent SIGUSR1 to trader %d\n", i);
         }
     }
 

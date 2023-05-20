@@ -69,8 +69,9 @@ void process_message(pid_t exchange_pid, const char *message)
 
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
+    printf("[PEX T%d] Received SIGUSR1\n", trader_id);
     char buffer[MESSAGE_BUFF_SIZE];
-    int num_bytes = read(fd_trader, buffer, MESSAGE_BUFF_SIZE - 1);
+    int num_bytes = read(fd_exchange, buffer, MESSAGE_BUFF_SIZE - 1);
     if (num_bytes > 0)
     {
         buffer[num_bytes] = '\0'; // 添加字符串终止符
@@ -95,18 +96,20 @@ int main(int argc, char *argv[])
     fd_exchange = open(pipe_exchange, O_RDONLY);
     if (fd_exchange < 0)
     {
-        fprintf(stderr, "[PEX T%d] Failed to open pipe to exchange", trader_id);
+        fprintf(stderr, "[PEX T%d] Failed to open pipe to exchange\n", trader_id);
         return 1;
     }
+    printf("[PEX T%d] Opened named pipe: %s\n", trader_id, pipe_exchange);
 
     sprintf(pipe_trader, "/tmp/pe_trader_%d", trader_id);
     printf("[PEX T%d] Creating named pipe: %s\n", trader_id, pipe_trader);
     fd_trader = open(pipe_trader, O_WRONLY);
     if (fd_trader < 0)
     {
-        fprintf(stderr, "[PEX T%d] Failed to open pipe from exchange", trader_id);
+        fprintf(stderr, "[PEX T%d] Failed to open pipe from exchange\n", trader_id);
         return 1;
     }
+    printf("[PEX T%d] Opened named pipe: %s\n", trader_id, pipe_trader);
 
     struct sigaction act;
     act.sa_sigaction = handle_sigusr1; // 设置信号处理函数
@@ -114,8 +117,12 @@ int main(int argc, char *argv[])
 
     if (sigaction(SIGUSR1, &act, NULL) == -1)
     { // 将 SIGUSR1 信号与处理函数关联
-        fprintf(stderr, "[PEX T%d] sigaction", trader_id);
+        fprintf(stderr, "[PEX T%d] sigaction\n", trader_id);
         return 1;
+    }
+    else
+    {
+        printf("[PEX T%d] Registered SIGUSR1 handler\n", trader_id);
     }
 
     while (1)
