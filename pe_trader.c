@@ -4,18 +4,19 @@ void process_message(pid_t exchange_pid, const char *message)
 {
     printf("[T%d]\tReceived message: %s\n", get_trader_id(), message);
 
-    // Parsing the message
-    char order_type[6];
-    char item[16];
+    // MARKET SELL GPU 1 1000
+    char source[MESSAGE_BUFF_SIZE];
+    char order_type[MESSAGE_BUFF_SIZE];
+    char product[MESSAGE_BUFF_SIZE];
     int quantity;
     int price;
-    sscanf(message, "%s %*s %s %d %d;", order_type, item, &quantity, &price);
+    sscanf(message, "%s %s %s %d %d", source, order_type, product, &quantity, &price);
 
     // Checking if it's a SELL order
-    if (strcmp(order_type, "MARKET") == 0 && strcmp(item, "SELL") == 0)
+    if (strcmp(source, "MARKET") == 0 && strcmp(order_type, "SELL") == 0)
     {
         // Placing the opposite BUY order
-        place_order(exchange_pid, BUY, item, quantity, price);
+        place_order(exchange_pid, BUY, product, quantity, price);
 
         // Checking if quantity is greater than or equal to 1000
         if (quantity >= 1000)
