@@ -29,16 +29,17 @@ void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int
     sprintf(message, "%d %s %s %d %d\n", current_order_id++, order_type == BUY ? "BUY" : "SELL", item, quantity, price);
     printf("[PEX T%d] Sending message: %s\n", trader_id, message);
     size_t message_len = strlen(message);
-    ssize_t bytes_written = write(fd_exchange, message, message_len);
+    ssize_t bytes_written = write(fd_trader, message, message_len);
     if (bytes_written == message_len)
     {
         printf("[PEX T%d] Message sent successfully\n", trader_id);
+        printf("[PEX T%d] Trying to signal exchange process: %d\n", trader_id, exchange_pid);
+        kill(exchange_pid, SIGUSR1);
     }
     else
     {
         printf("[PEX T%d] Failed to send message, written %ld bytes out of %ld\n", trader_id, bytes_written, message_len);
     }
-    kill(exchange_pid, SIGUSR1);
 }
 
 void process_message(pid_t exchange_pid, const char *message)

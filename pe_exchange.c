@@ -216,6 +216,7 @@ void remove_trader(Exchange *exchange, pid_t pid)
 
 bool process_trader_commands(Exchange *exchange, Trader *trader)
 {
+    printf("[PEX]\tProcessing commands from trader %d\n", trader->id);
     FILE *file_exchange = fdopen(trader->fd_trader, "w");
     char command[1024];
     if (fgets(command, sizeof(command), file_exchange) == NULL)
@@ -650,23 +651,30 @@ bool send_message_to_trader(Trader *trader, const char *message)
 
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
-    // 获取发送信号的进程 ID
+    // TODO 统一用 \t 替换空格
     pid_t trader_pid = info->si_pid;
+    printf("[PEX]\tReceived SIGUSR1 from trader: %d\n", trader_pid);
+    // 获取发送信号的进程 ID
     Trader *trader = NULL;
+    printf("[PEX]\tChecking traders, len %d\n", ex->num_traders);
     for (int i = 0; i < ex->num_traders; i++)
     {
+        printf("[PEX]\tChecking trader %d with PID: %d\n", ex->traders[i]->id, ex->traders[i]->pid);
         if (ex->traders[i]->pid == trader_pid)
         {
             trader = ex->traders[i];
             break;
         }
     }
-    if (trader != NULL)
+    if (trader == NULL)
     {
-        if (process_trader_commands(ex, trader))
-        {
-            process_orders(ex);
-        }
+        printf("[PEX]\tERROR: Could not find trader with PID %d\n", trader_pid);
+        return;
+    }
+    printf("[PEX]\tFound trader %d with PID: %d sent signal\n", trader->id, trader_pid);
+    if (process_trader_commands(ex, trader))
+    {
+        process_orders(ex);
     }
 }
 
