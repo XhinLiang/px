@@ -1,4 +1,5 @@
 *.pdf
 .vscode
 pe_trader
+pe_trader_seller
 pe_exchange
