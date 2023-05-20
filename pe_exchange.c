@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 
-Exchange *ex; // 全局变量
+Exchange *exg; // 全局变量
 
 int min(int a, int b)
 {
@@ -656,13 +656,13 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
     printf("[PEX]\tReceived SIGUSR1 from trader: %d\n", trader_pid);
     // 获取发送信号的进程 ID
     Trader *trader = NULL;
-    printf("[PEX]\tChecking traders, len %d\n", ex->num_traders);
-    for (int i = 0; i < ex->num_traders; i++)
+    printf("[PEX]\tReceived SIGUSR1 hehe\n");
+    for (int i = 0; i < exg->num_traders; i++)
     {
-        printf("[PEX]\tChecking trader %d with PID: %d\n", ex->traders[i]->id, ex->traders[i]->pid);
-        if (ex->traders[i]->pid == trader_pid)
+        printf("[PEX]\tChecking trader %d with PID: %d\n", exg->traders[i]->id, exg->traders[i]->pid);
+        if (exg->traders[i]->pid == trader_pid)
         {
-            trader = ex->traders[i];
+            trader = exg->traders[i];
             break;
         }
     }
@@ -672,9 +672,9 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
         return;
     }
     printf("[PEX]\tFound trader %d with PID: %d sent signal\n", trader->id, trader_pid);
-    if (process_trader_commands(ex, trader))
+    if (process_trader_commands(exg, trader))
     {
-        process_orders(ex);
+        process_orders(exg);
     }
 }
 
@@ -699,20 +699,20 @@ int main(int argc, char *argv[])
 
     // 读取产品文件
     char *product_file = argv[1];
-    Exchange *exchange = create_exchange(product_file);
-    if (exchange == NULL)
+    exg = create_exchange(product_file);
+    if (exg == NULL)
     {
         fprintf(stderr, "[PEX] Failed to load product file: %s\n", product_file);
         return 1;
     }
 
     // 创建交易员的数组，并初始化
-    int num_traders = argc - 2;
-    Trader **traders = malloc(sizeof(Trader *) * num_traders);
-    for (int i = 0; i < num_traders; i++)
+    exg->num_traders = argc - 2;
+    exg->traders = malloc(sizeof(Trader *) * exg->num_traders);
+    for (int i = 0; i < exg->num_traders; i++)
     {
-        traders[i] = create_trader(i, argv[i + 2]);
-        if (!traders[i])
+        exg->traders[i] = create_trader(i, argv[i + 2]);
+        if (!exg->traders[i])
         {
             fprintf(stderr, "[PEX] Failed to create trader: %s, %d\n", argv[i + 2], i);
             return 1;
@@ -722,13 +722,12 @@ int main(int argc, char *argv[])
             printf("[PEX] Created trader: %s, %d\n", argv[i + 2], i);
         }
     }
-    exchange->num_traders = num_traders;
-    exchange->traders = traders;
+    printf("[PEX] Created %d traders\n", exg->num_traders);
 
     // 向所有的交易员发送"MARKET OPEN"消息，并发送SIGUSR1信号
-    for (int i = 0; i < num_traders; i++)
+    for (int i = 0; i < exg->num_traders; i++)
     {
-        if (!send_message_to_trader(traders[i], "MARKET OPEN;"))
+        if (!send_message_to_trader(exg->traders[i], "MARKET OPEN;"))
         {
             fprintf(stderr, "[PEX] Failed to send message to trader: %d\n", i);
             return 1;
@@ -738,9 +737,9 @@ int main(int argc, char *argv[])
             printf("[PEX] sent 'MARKET OPEN;' to trader %d\n", i);
         }
     }
-    for (int i = 0; i < num_traders; i++)
+    for (int i = 0; i < exg->num_traders; i++)
     {
-        if (kill(traders[i]->pid, SIGUSR1) == -1)
+        if (kill(exg->traders[i]->pid, SIGUSR1) == -1)
         {
             fprintf(stderr, "[PEX] Failed to send signal to trader: %d\n", i);
             return 1;
