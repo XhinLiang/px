@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Wall -Werror -Wvla -O0 -std=c11 -g
 LDFLAGS=-lm
-BINARIES=pe_exchange pe_trader
+BINARIES=pe_exchange pe_trader pe_trader_seller
 
 all: $(BINARIES)
 
