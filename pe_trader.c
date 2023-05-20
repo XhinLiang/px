@@ -87,19 +87,21 @@ int main(int argc, char *argv[])
     }
 
     trader_id = atoi(argv[1]); // 获取交易者ID
-    // 为此交易者创建Named Pipes
-    sprintf(pipe_exchange, "/tmp/pe_trader_%d", trader_id);
-    sprintf(pipe_trader, "/tmp/pe_exchange_%d", trader_id);
 
+    // 为此交易者创建Named Pipes
+    sprintf(pipe_exchange, "/tmp/pe_exchange_%d", trader_id);
+    printf("[PEX T%d] Creating named pipe: %s\n", trader_id, pipe_exchange);
     // 打开FIFO进行读写
-    fd_exchange = open(pipe_exchange, O_WRONLY);
+    fd_exchange = open(pipe_exchange, O_RDONLY);
     if (fd_exchange < 0)
     {
         fprintf(stderr, "[PEX T%d] Failed to open pipe to exchange", trader_id);
         return 1;
     }
 
-    fd_trader = open(pipe_trader, O_RDONLY);
+    sprintf(pipe_trader, "/tmp/pe_trader_%d", trader_id);
+    printf("[PEX T%d] Creating named pipe: %s\n", trader_id, pipe_trader);
+    fd_trader = open(pipe_trader, O_WRONLY);
     if (fd_trader < 0)
     {
         fprintf(stderr, "[PEX T%d] Failed to open pipe from exchange", trader_id);

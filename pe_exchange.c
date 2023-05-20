@@ -76,7 +76,7 @@ Exchange *create_exchange(const char *product_file)
     {
         if (fgets(line, sizeof(line), file) == NULL)
         {
-            fprintf(stderr, "[PEX] Invalid product file format");
+            fprintf(stderr, "[PEX] Invalid product file format\n");
             fclose(file);
             destroy_exchange(exchange);
             return NULL;
@@ -109,7 +109,7 @@ Trader *create_trader(int id, const char *bin_path)
     Trader *trader = (Trader *)malloc(sizeof(Trader));
     if (!trader)
     {
-        fprintf(stderr, "[PEX] Failed to allocate memory for Trader");
+        fprintf(stderr, "[PEX] Failed to allocate memory for Trader\n");
         return NULL;
     }
 
@@ -118,7 +118,7 @@ Trader *create_trader(int id, const char *bin_path)
     trader->bin_path = strdup(bin_path);
     if (!trader->bin_path)
     {
-        fprintf(stderr, "[PEX] Failed to duplicate bin_path");
+        fprintf(stderr, "[PEX] Failed to duplicate bin_path\n");
         destroy_trader(trader);
         return NULL;
     }
@@ -133,7 +133,7 @@ Trader *create_trader(int id, const char *bin_path)
         // TODO check if fifo existed
         if (mkfifo(pipe_exchange, 0666) == -1)
         {
-            fprintf(stderr, "[PEX] Failed to create pipe to exchange");
+            fprintf(stderr, "[PEX] Failed to create pipe to exchange\n");
             destroy_trader(trader);
             return NULL;
         }
@@ -150,7 +150,7 @@ Trader *create_trader(int id, const char *bin_path)
     {
         if (mkfifo(pipe_trader, 0666) == -1)
         {
-            fprintf(stderr, "[PEX] Failed to create pipe from exchange");
+            fprintf(stderr, "[PEX] Failed to create pipe from exchange\n");
             unlink(pipe_exchange);
             destroy_trader(trader);
             return NULL;
@@ -166,7 +166,7 @@ Trader *create_trader(int id, const char *bin_path)
     pid_t pid = fork();
     if (pid == -1)
     {
-        fprintf(stderr, "[PEX] Failed to fork new process");
+        fprintf(stderr, "[PEX] Failed to fork new process\n");
         close(trader->fd_exchange);
         close(trader->fd_trader);
         unlink(pipe_exchange);
@@ -180,7 +180,7 @@ Trader *create_trader(int id, const char *bin_path)
         char trader_id_str[16];
         sprintf(trader_id_str, "%d", id);
         execl(trader->bin_path, trader->bin_path, trader_id_str, (char *)NULL);
-        fprintf(stderr, "[PEX] Failed to exec trader binary");
+        fprintf(stderr, "[PEX] Failed to exec trader binary\n");
         exit(EXIT_FAILURE);
     }
     else
@@ -192,7 +192,7 @@ Trader *create_trader(int id, const char *bin_path)
     trader->fd_exchange = open(pipe_exchange, O_WRONLY);
     if (trader->fd_exchange == -1)
     {
-        fprintf(stderr, "[PEX] Failed to open pipe to exchange");
+        fprintf(stderr, "[PEX] Failed to open pipe to exchange\n");
         unlink(pipe_exchange);
         unlink(pipe_trader);
         destroy_trader(trader);
@@ -203,7 +203,7 @@ Trader *create_trader(int id, const char *bin_path)
     trader->fd_trader = open(pipe_trader, O_RDONLY);
     if (trader->fd_trader == -1)
     {
-        fprintf(stderr, "[PEX] Failed to open pipe from exchange");
+        fprintf(stderr, "[PEX] Failed to open pipe from exchange\n");
         close(trader->fd_exchange);
         unlink(pipe_exchange);
         unlink(pipe_trader);
@@ -232,11 +232,11 @@ void remove_trader(Exchange *exchange, pid_t pid)
 
 bool process_trader_commands(Exchange *exchange, Trader *trader)
 {
-    FILE *file_exchange = fdopen(trader->fd_exchange, "w");
+    FILE *file_exchange = fdopen(trader->fd_trader, "w");
     char command[1024];
     if (fgets(command, sizeof(command), file_exchange) == NULL)
     {
-        fprintf(stderr, "Failed to read from named pipe, %d", trader->id);
+        fprintf(stderr, "[PEX] Failed to read from named pipe, %d", trader->id);
         return false;
     }
     // [T0] Parsing command: <BUY 0 GPU 30 500>
@@ -660,7 +660,7 @@ bool amend_order(Exchange *exchange, int trader_id, int order_id, int new_quanti
 bool send_message_to_trader(Trader *trader, const char *message)
 {
     size_t message_len = strlen(message);
-    ssize_t bytes_written = write(trader->fd_trader, message, message_len);
+    ssize_t bytes_written = write(trader->fd_exchange, message, message_len);
     return bytes_written == message_len;
 }
 
