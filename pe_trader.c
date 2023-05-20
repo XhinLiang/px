@@ -36,7 +36,7 @@ void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int
     }
     else
     {
-        printf("[PEX T%d] Failed to send message\n", trader_id);
+        printf("[PEX T%d] Failed to send message, written %ld bytes out of %ld\n", trader_id, bytes_written, message_len);
     }
     kill(exchange_pid, SIGUSR1);
 }

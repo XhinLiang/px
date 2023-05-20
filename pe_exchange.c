@@ -708,7 +708,9 @@ int main(int argc, char *argv[])
         {
             fprintf(stderr, "[PEX] Failed to create trader: %s, %d\n", argv[i + 2], i);
             return 1;
-        } else {
+        }
+        else
+        {
             printf("[PEX] Created trader: %s, %d\n", argv[i + 2], i);
         }
     }
@@ -722,7 +724,9 @@ int main(int argc, char *argv[])
         {
             fprintf(stderr, "[PEX] Failed to send message to trader: %d\n", i);
             return 1;
-        } else {
+        }
+        else
+        {
             printf("[PEX] sent 'MARKET OPEN;' to trader %d\n", i);
         }
     }
@@ -732,7 +736,9 @@ int main(int argc, char *argv[])
         {
             fprintf(stderr, "[PEX] Failed to send signal to trader: %d\n", i);
             return 1;
-        } else {
+        }
+        else
+        {
             printf("[PEX] sent SIGUSR1 to trader %d\n", i);
         }
     }
