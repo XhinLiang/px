@@ -27,7 +27,6 @@ void destroy_trader(Trader *trader)
     free(trader);
 }
 
-
 void destroy_exchange(Exchange *exchange)
 {
     for (int i = 0; i < exchange->num_traders; i++)
@@ -39,7 +38,6 @@ void destroy_exchange(Exchange *exchange)
     free(exchange->orders);
     free(exchange);
 }
-
 
 Exchange *create_exchange(const char *product_file)
 {
@@ -129,22 +127,30 @@ Trader *create_trader(int id, const char *bin_path)
     char pipe_exchange[PIPE_NAME_MAX_SIZE], pipe_trader[PIPE_NAME_MAX_SIZE];
 
     sprintf(pipe_exchange, "/tmp/pe_exchange_%d", id);
-    if (mkfifo(pipe_exchange, 0666) == -1)
+    int exchange_fifo_exists = access(pipe_exchange, F_OK); // 检查文件是否存在
+    if (exchange_fifo_exists != 0)
     {
-        fprintf(stderr, "[PEX] Failed to create pipe to exchange");
-        destroy_trader(trader);
-        return NULL;
+        // TODO check if fifo existed
+        if (mkfifo(pipe_exchange, 0666) == -1)
+        {
+            fprintf(stderr, "[PEX] Failed to create pipe to exchange");
+            destroy_trader(trader);
+            return NULL;
+        }
     }
-    // [PEX] Created FIFO /tmp/pe_exchange_0
     printf("[PEX] Created FIFO %s\n", pipe_exchange);
 
     sprintf(pipe_trader, "/tmp/pe_trader_%d", id);
-    if (mkfifo(pipe_trader, 0666) == -1)
+    int trader_fifo_exists = access(pipe_trader, F_OK); // 检查文件是否存在
+    if (trader_fifo_exists != 0)
     {
-        fprintf(stderr, "[PEX] Failed to create pipe from exchange");
-        unlink(pipe_exchange);
-        destroy_trader(trader);
-        return NULL;
+        if (mkfifo(pipe_trader, 0666) == -1)
+        {
+            fprintf(stderr, "[PEX] Failed to create pipe from exchange");
+            unlink(pipe_exchange);
+            destroy_trader(trader);
+            return NULL;
+        }
     }
     // [PEX] Created FIFO /tmp/pe_trader_0
     printf("[PEX] Created FIFO %s\n", pipe_trader);
@@ -211,7 +217,7 @@ void remove_trader(Exchange *exchange, pid_t pid)
     for (int i = 0; i < exchange->num_traders; i++)
     {
         Trader *trader = exchange->traders[i];
-        if (trader-> pid == pid)
+        if (trader->pid == pid)
         {
             // 子进程已退出，打印消息
             printf("[PEX] Trader %d(pid %d) disconnected\n", trader->id, trader->pid);
@@ -676,7 +682,6 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
         }
     }
 }
-
 
 int main(int argc, char *argv[])
 {
