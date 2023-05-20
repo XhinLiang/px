@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <pthread.h>
 
+pthread_mutex_t mutex; // 定义互斥锁
+
 int current_order_id = 1;
 
 // 为此交易者创建Named Pipes
@@ -24,6 +26,12 @@ char pipe_trader[PIPE_NAME_MAX_SIZE];
 int fd_exchange;
 int fd_trader;
 int trader_id;
+int exchange_pid;
+
+int get_exchange_pid()
+{
+    return exchange_pid;
+}
 
 int get_trader_id()
 {
@@ -53,6 +61,7 @@ void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int
 
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
+    pthread_mutex_lock(&mutex); // 加锁
     pid_t pid = info->si_pid;
     if (pid <= 0)
     {
@@ -67,18 +76,21 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
         buffer[num_bytes] = '\0'; // 添加字符串终止符
         message_handler(pid, buffer);
     }
+    pthread_mutex_unlock(&mutex); // 解锁
 }
 
 int main0(int argc, char *argv[], void (*handler)(pid_t exchange_pid, const char *message))
 {
+    pthread_mutex_init(&mutex, NULL);
     message_handler = handler;
-    if (argc != 2)
+    if (argc != 3)
     {
-        fprintf(stderr, "Usage: %s [Trader ID]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [Trader ID] [Exchange PID]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
     trader_id = atoi(argv[1]); // 获取交易者ID
+    exchange_pid = atoi(argv[2]); // 获取交易所进程ID
 
     // 为此交易者创建Named Pipes
     sprintf(pipe_exchange, "/tmp/pe_exchange_%d", trader_id);
@@ -121,6 +133,7 @@ int main0(int argc, char *argv[], void (*handler)(pid_t exchange_pid, const char
         pause(); // 暂停，等待信号
     }
 
+    pthread_mutex_destroy(&mutex);
     // 关闭FIFO
     close(fd_exchange);
     close(fd_trader);

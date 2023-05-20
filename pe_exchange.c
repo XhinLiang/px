@@ -173,7 +173,9 @@ Trader *create_trader(int id, const char *bin_path)
     {
         char trader_id_str[16];
         sprintf(trader_id_str, "%d", id);
-        execl(trader->bin_path, trader->bin_path, trader_id_str, (char *)NULL);
+        char pid_str[16];
+        sprintf(pid_str, "%d", getpid());
+        execl(trader->bin_path, trader->bin_path, trader_id_str, pid_str, (char *)NULL);
         fprintf(stderr, "[PEX]\tFailed to exec trader binary\n");
         exit(EXIT_FAILURE);
     }
