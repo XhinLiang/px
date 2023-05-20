@@ -522,9 +522,9 @@ void report(Exchange *exchange)
 
         printf("[PEX]\tProduct: %s; ", product);
 
-        int min_price = 999999;
+        int min_price = MAX_PRICE; // TODO
         int max_price = 0;
-        int min_sell_price = 999999;
+        int min_sell_price = MAX_PRICE;
 
         // Count the number of buy and sell levels
         for (int j = 0; j < exchange->num_orders; j++)
@@ -703,8 +703,11 @@ bool send_message_to_trader(Trader *trader, const char *message)
 
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
-    // TODO 统一用 \t 替换空格
     pid_t trader_pid = info->si_pid;
+    if (trader_pid <= 0) {
+        printf("[PEX]\tERROR: Received invalid PID: %d\n", trader_pid);
+        return;
+    }
     printf("[PEX]\tReceived SIGUSR1 from pid: %d\n", trader_pid);
     // 获取发送信号的进程 ID
     Trader *trader = NULL;

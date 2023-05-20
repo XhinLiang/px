@@ -9,6 +9,7 @@
 #define MAX_ORDERS 500
 #define PIPE_NAME_MAX_SIZE 256
 #define MESSAGE_BUFF_SIZE 256
+#define MAX_PRICE 999999
 
 typedef enum
 {
