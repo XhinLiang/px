@@ -12,6 +12,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <pthread.h>
 
 int current_order_id = 1;
 
@@ -34,12 +36,14 @@ void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int
     sprintf(message, "%s %d %s %d %d\n", order_type == BUY ? "BUY" : "SELL", current_order_id++, item, quantity, price);
     printf("[T%d]\tSending message: %s\n", trader_id, message);
     size_t message_len = strlen(message);
+    sleep(1);
     ssize_t bytes_written = write(fd_trader, message, message_len);
     if (bytes_written == message_len)
     {
         printf("[T%d]\tMessage sent successfully\n", trader_id);
-        printf("[T%d]\tTrying to signal exchange process: %d\n", trader_id, exchange_pid);
+        sleep(1);
         kill(exchange_pid, SIGUSR1);
+        printf("[T%d]\tSignaled exchange process: %d\n", trader_id, exchange_pid);
     }
     else
     {
@@ -50,7 +54,8 @@ void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
     pid_t pid = info->si_pid;
-    if (pid <= 0) {
+    if (pid <= 0)
+    {
         printf("[T%d]\tReceived SIGUSR1 from invalid pid: %d\n", trader_id, pid);
         return;
     }
@@ -63,8 +68,6 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
         message_handler(pid, buffer);
     }
 }
-
-
 
 int main0(int argc, char *argv[], void (*handler)(pid_t exchange_pid, const char *message))
 {

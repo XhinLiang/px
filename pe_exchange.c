@@ -10,8 +10,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <pthread.h>
 
-Exchange *exg; // 全局变量
+pthread_mutex_t mutex; // 定义互斥锁
+Exchange *exg;         // 全局变量
 
 int min(int a, int b)
 {
@@ -209,6 +212,7 @@ void remove_trader(Exchange *exchange, pid_t pid)
             // 子进程已退出，打印消息
             printf("[PEX]\tTrader %d(pid %d) disconnected\n", trader->id, trader->pid);
             trader->disconnected = true;
+            return;
         }
     }
     fprintf(stderr, "[PEX]\tTry to remove trader pid %d, but not found\n", pid);
@@ -218,6 +222,7 @@ void ack_message(Exchange *exchange, Trader *trader, char *command_type, int ord
 {
     char ack_message[1024];
     sprintf(ack_message, "ACCEPTED %d;", order_id);
+    sleep(1);
     send_message_to_trader(trader, ack_message);
     kill(trader->pid, SIGUSR1);
 
@@ -228,7 +233,7 @@ void ack_message(Exchange *exchange, Trader *trader, char *command_type, int ord
     for (int i = 0; i < exchange->num_traders; i++)
     {
         Trader *other_trader = exchange->traders[i];
-        if (other_trader->id == trader->id)
+        if (other_trader->id == trader->id || other_trader->disconnected)
         {
             continue;
         }
@@ -237,6 +242,11 @@ void ack_message(Exchange *exchange, Trader *trader, char *command_type, int ord
     for (int i = 0; i < exchange->num_traders; i++)
     {
         Trader *other_trader = exchange->traders[i];
+        if (other_trader->id == trader->id || other_trader->disconnected)
+        {
+            continue;
+        }
+        sleep(1);
         kill(other_trader->pid, SIGUSR1);
     }
 }
@@ -283,7 +293,7 @@ void process_trader_commands(Exchange *exchange, Trader *trader)
         }
         if (strcmp(command_type, "CANCEL") == 0)
         {
-            if (remove_order(exchange, trader->id, order_id))
+            if (cancel_order(exchange, trader->id, order_id))
             {
                 ack_message(exchange, trader, command_type, order_id, product, qty, price);
             }
@@ -354,7 +364,7 @@ void match_orders(Exchange *exchange)
             for (int j = 0; j < exchange->num_orders; j++)
             {
                 Order *order = exchange->orders[j];
-                if (order->canceled)
+                if (order->canceled || order->quantity <= 0)
                 {
                     continue;
                 }
@@ -365,16 +375,16 @@ void match_orders(Exchange *exchange)
             }
             if (sell_orders_num == 0)
             {
-                printf("[PEX]\t No sell orders for product %s\n", product);
+                printf("[PEX]\tNo sell orders for product %s\n", product);
                 continue;
             }
-            printf("[PEX]\t %s Sell orders: %d\n", product, sell_orders_num);
+            printf("[PEX]\t%s Sell orders: %d\n", product, sell_orders_num);
 
             // 遍历 exchange->orders，把合适的放入 buy_orders，并更新 buy_orders_num
             for (int j = 0; j < exchange->num_orders; j++)
             {
                 Order *order = exchange->orders[j];
-                if (order->canceled)
+                if (order->canceled || order->quantity <= 0)
                 {
                     continue;
                 }
@@ -385,10 +395,10 @@ void match_orders(Exchange *exchange)
             }
             if (buy_orders_num == 0)
             {
-                printf("[PEX]\t No buy orders for product %s\n", product);
+                printf("[PEX]\tNo buy orders for product %s\n", product);
                 continue;
             }
-            printf("[PEX]\t %s Buy orders: %d\n", product, buy_orders_num);
+            printf("[PEX]\t%s Buy orders: %d\n", product, buy_orders_num);
 
             // 按价格排序
             qsort(sell_orders, sell_orders_num, sizeof(Order *), compare_sell_orders);
@@ -407,7 +417,7 @@ void match_orders(Exchange *exchange)
                     Order *buy_order = buy_orders[n];
                     if (buy_order->price >= sell_order->price)
                     {
-                        deal_orders(exchange, buy_order, sell_order);
+                        deal_orders(exchange, product, buy_order, sell_order);
                         deal = true;
                         break;
                     }
@@ -421,49 +431,28 @@ void match_orders(Exchange *exchange)
         }
     }
 
-    // 清理 buy_orders & sell_orders
-    free(sell_orders);
-    free(buy_orders);
-
-    check_trader_status(exchange);
-}
-
-void check_trader_status(Exchange *exchange)
-{
-    int status;
-    while (true)
+    // 释放 sell_orders
+    for (int i = 0; i < max_orders_num; i++)
     {
-        bool all_disconnected = true;
-        for (int i = 0; i < exchange->num_traders; i++)
+        if (sell_orders[i] != NULL)
         {
-            Trader *trader = exchange->traders[i];
-            if (!trader->disconnected)
-            {
-                all_disconnected = false;
-                break;
-            }
-        }
-        if (all_disconnected)
-        {
-            printf("[PEX]\tTrading completed\n");
-            printf("[PEX]\tExchange fees collected: $%d\n", exchange->collected_fees);
-            exit(0);
-            return;
-        }
-
-        pid_t pid = waitpid(-1, &status, WNOHANG);
-        if (pid > 0)
-        {
-            remove_trader(exchange, pid);
-        }
-        else
-        {
-            return;
+            free(sell_orders[i]);
         }
     }
+    free(sell_orders);
+
+    // 释放 buy_orders
+    for (int i = 0; i < max_orders_num; i++)
+    {
+        if (buy_orders[i] != NULL)
+        {
+            free(buy_orders[i]);
+        }
+    }
+    free(buy_orders);
 }
 
-void deal_orders(Exchange *exchange, Order *buy_order, Order *sell_order)
+void deal_orders(Exchange *exchange, char *product, Order *buy_order, Order *sell_order)
 {
     // 交易
     int trade_qty = min(buy_order->quantity, sell_order->quantity);
@@ -474,6 +463,9 @@ void deal_orders(Exchange *exchange, Order *buy_order, Order *sell_order)
     }
     int trade_price = each_price * trade_qty;
     int fee = (double)((double)trade_price * 0.01 + 0.5);
+
+    printf("[PEX]\tDealing %s orders: buy %d@%d, sell %d@%d, each %d, qty %d, fee %d\n",
+           product, buy_order->id, buy_order->trader_id, sell_order->id, sell_order->trader_id, each_price, trade_qty, fee);
 
     // 更新交易员的账户状态
     Trader *buy_trader = exchange->traders[buy_order->trader_id];
@@ -486,23 +478,15 @@ void deal_orders(Exchange *exchange, Order *buy_order, Order *sell_order)
     buy_order->quantity -= trade_qty;
     sell_order->quantity -= trade_qty;
 
-    // 如果订单数量为0，则取消订单
-    if (buy_order->quantity == 0)
-    {
-        remove_order(exchange, buy_order->trader_id, buy_order->id);
-    }
-    if (sell_order->quantity == 0)
-    {
-        remove_order(exchange, sell_order->trader_id, sell_order->id);
-    }
-
     char message[256];
     sprintf(message, "FILL %d %d;", buy_order->id, trade_qty);
     send_message_to_trader(exchange->traders[buy_order->trader_id], message);
     sprintf(message, "FILL %d %d;", sell_order->id, trade_qty);
     send_message_to_trader(exchange->traders[sell_order->trader_id], message);
 
+    sleep(1);
     kill(buy_trader->pid, SIGUSR1);
+    sleep(1);
     kill(sell_trader->pid, SIGUSR1);
 
     report(exchange);
@@ -510,6 +494,7 @@ void deal_orders(Exchange *exchange, Order *buy_order, Order *sell_order)
 
 void report(Exchange *exchange)
 {
+    printf("[PEX]\n");
     printf("[PEX]\t--ORDERBOOK--\n");
 
     // Iterate over products
@@ -529,7 +514,7 @@ void report(Exchange *exchange)
         for (int j = 0; j < exchange->num_orders; j++)
         {
             Order *order = exchange->orders[j];
-            if (order->canceled)
+            if (order->canceled || order->quantity == 0)
             {
                 continue;
             }
@@ -569,7 +554,7 @@ void report(Exchange *exchange)
             for (int j = 0; j < exchange->num_orders; j++)
             {
                 Order *order = exchange->orders[j];
-                if (order->canceled)
+                if (order->canceled || order->quantity == 0)
                 {
                     continue;
                 }
@@ -610,7 +595,7 @@ void report(Exchange *exchange)
             for (int k = 0; k < exchange->num_orders; k++)
             {
                 Order *order = exchange->orders[k];
-                if (order->canceled)
+                if (order->canceled || order->quantity == 0)
                 {
                     continue;
                 }
@@ -634,10 +619,12 @@ void report(Exchange *exchange)
 
         printf("\n");
     }
+    printf("[PEX]\n");
 }
 
 void update_account(Trader *trader, int amount)
 {
+    printf("[PEX]\tUpdating trader %d balance, before: %d, after: %d\n", trader->id, trader->balance, trader->balance + amount);
     trader->balance += amount;
 }
 
@@ -661,18 +648,18 @@ bool add_order(Exchange *exchange, int trader_id, OrderType type, int order_id, 
     return true;
 }
 
-bool remove_order(Exchange *exchange, int trader_id, int order_id)
+bool cancel_order(Exchange *exchange, int trader_id, int order_id)
 {
     // 从Exchange的订单列表中找到并删除指定的Order
     for (int i = 0; i < exchange->num_orders; i++)
     {
         if (exchange->orders[i]->id == order_id && exchange->orders[i]->trader_id == trader_id)
         {
+            printf("[PEX]\tCancelling order id: %d, trader: %d\n", order_id, trader_id);
             exchange->orders[i]->canceled = true;
             return true;
         }
     }
-
     // 如果找不到指定的Order，返回false
     return false;
 }
@@ -684,6 +671,8 @@ bool amend_order(Exchange *exchange, int trader_id, int order_id, int new_quanti
     {
         if (exchange->orders[i]->id == order_id && exchange->orders[i]->trader_id == trader_id)
         {
+            printf("[PEX]\tAmending order id: %d, trader: %d, qty %d -> %d, price %d -> %d\n",
+                   order_id, trader_id, exchange->orders[i]->quantity, new_quantity, exchange->orders[i]->price, new_price);
             exchange->orders[i]->quantity = new_quantity;
             exchange->orders[i]->price = new_price;
             return true;
@@ -702,8 +691,10 @@ bool send_message_to_trader(Trader *trader, const char *message)
 
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
+    pthread_mutex_lock(&mutex); // 加锁
     pid_t trader_pid = info->si_pid;
-    if (trader_pid <= 0) {
+    if (trader_pid <= 0)
+    {
         printf("[PEX]\tERROR: Received invalid PID: %d\n", trader_pid);
         return;
     }
@@ -726,6 +717,57 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
     }
     printf("[PEX]\tFound trader %d with PID: %d sent signal\n", trader->id, trader_pid);
     process_trader_commands(exg, trader);
+    pthread_mutex_unlock(&mutex); // 解锁
+}
+
+void check_trader_status(Exchange *exchange)
+{
+    int status;
+    while (true)
+    {
+        bool all_disconnected = true;
+        for (int i = 0; i < exchange->num_traders; i++)
+        {
+            Trader *trader = exchange->traders[i];
+            if (!trader->disconnected)
+            {
+                all_disconnected = false;
+                break;
+            }
+        }
+        if (all_disconnected)
+        {
+            printf("[PEX]\n");
+            printf("[PEX]\tTrading completed\n");
+            printf("[PEX]\tExchange fees collected: $%d\n", exchange->collected_fees);
+            sleep(1);
+            exit(0);
+            return;
+        }
+
+        pid_t pid = waitpid(-1, &status, WNOHANG);
+        if (pid > 0)
+        {
+            remove_trader(exchange, pid);
+        }
+        else
+        {
+            return;
+        }
+    }
+}
+
+void *check_trader_status_intervally(void *arg)
+{
+    while (1)
+    {
+        printf("[PEX] Checking trader status...\n");
+        check_trader_status(exg);
+        // Sleep for 10 seconds
+        sleep(10);
+    }
+    // This will never be reached, as the thread runs indefinitely
+    return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -738,12 +780,12 @@ int main(int argc, char *argv[])
     }
 
     struct sigaction act;
-    act.sa_sigaction = handle_sigusr1; // 设置信号处理函数
-    act.sa_flags = SA_SIGINFO;         // 使用 sa_sigaction 而不是 sa_handler
+    act.sa_sigaction = handle_sigusr1;
+    act.sa_flags = SA_SIGINFO;
 
     if (sigaction(SIGUSR1, &act, NULL) == -1)
     { // 将 SIGUSR1 信号与处理函数关联
-        fprintf(stderr, "[PEX]\tsigaction");
+        fprintf(stderr, "[PEX]\tSigaction error");
         return 1;
     }
 
@@ -789,6 +831,7 @@ int main(int argc, char *argv[])
     }
     for (int i = 0; i < exg->num_traders; i++)
     {
+        sleep(1);
         if (kill(exg->traders[i]->pid, SIGUSR1) == -1)
         {
             fprintf(stderr, "[PEX]\tFailed to send signal to trader: %d\n", i);
@@ -800,9 +843,22 @@ int main(int argc, char *argv[])
         }
     }
 
+    pthread_t thread;
+
+    // Create a thread to run the check_trader_status function
+    if (pthread_create(&thread, NULL, check_trader_status_intervally, NULL) != 0)
+    {
+        fprintf(stderr, "Failed to create thread\n");
+        return 1;
+    }
+
     while (1)
     {
         pause(); // 暂停，等待信号
     }
-    return 0;
+    // Wait for the thread to finish (which will never happen in this case)
+    pthread_join(thread, NULL);
+
+    printf("[PEX]\tMarket closed unintentionally\n");
+    return 1;
 }
