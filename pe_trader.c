@@ -95,14 +95,14 @@ int main(int argc, char *argv[])
     fd_exchange = open(pipe_exchange, O_WRONLY);
     if (fd_exchange < 0)
     {
-        perror("Failed to open pipe to exchange");
+        fprintf(stderr, "[PEX T%d] Failed to open pipe to exchange", trader_id);
         return 1;
     }
 
     fd_trader = open(pipe_trader, O_RDONLY);
     if (fd_trader < 0)
     {
-        perror("Failed to open pipe from exchange");
+        fprintf(stderr, "[PEX T%d] Failed to open pipe from exchange", trader_id);
         return 1;
     }
 
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
 
     if (sigaction(SIGUSR1, &act, NULL) == -1)
     { // 将 SIGUSR1 信号与处理函数关联
-        fprintf(stderr, "[PEX] sigaction");
+        fprintf(stderr, "[PEX T%d] sigaction", trader_id);
         return 1;
     }
 

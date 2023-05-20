@@ -137,8 +137,12 @@ Trader *create_trader(int id, const char *bin_path)
             destroy_trader(trader);
             return NULL;
         }
+        printf("[PEX] Created FIFO %s\n", pipe_exchange);
     }
-    printf("[PEX] Created FIFO %s\n", pipe_exchange);
+    else
+    {
+        printf("[PEX] FIFO existed %s\n", pipe_exchange);
+    }
 
     sprintf(pipe_trader, "/tmp/pe_trader_%d", id);
     int trader_fifo_exists = access(pipe_trader, F_OK); // 检查文件是否存在
@@ -151,9 +155,12 @@ Trader *create_trader(int id, const char *bin_path)
             destroy_trader(trader);
             return NULL;
         }
+        printf("[PEX] Created FIFO %s\n", pipe_trader);
     }
-    // [PEX] Created FIFO /tmp/pe_trader_0
-    printf("[PEX] Created FIFO %s\n", pipe_trader);
+    else
+    {
+        printf("[PEX] FIFO existed %s\n", pipe_trader);
+    }
 
     // 创建新的进程，然后使用exec()系列函数来运行trader程序
     pid_t pid = fork();
@@ -173,7 +180,6 @@ Trader *create_trader(int id, const char *bin_path)
         char trader_id_str[16];
         sprintf(trader_id_str, "%d", id);
         execl(trader->bin_path, trader->bin_path, trader_id_str, (char *)NULL);
-        // If execl returns, it means there was an error
         fprintf(stderr, "[PEX] Failed to exec trader binary");
         exit(EXIT_FAILURE);
     }
@@ -181,7 +187,6 @@ Trader *create_trader(int id, const char *bin_path)
     { // Parent process
         trader->pid = pid;
     }
-    // [PEX] Starting trader 0 (./trader_a)
     printf("[PEX] Starting trader %d (%s)\n", id, bin_path);
 
     trader->fd_exchange = open(pipe_exchange, O_WRONLY);
@@ -193,7 +198,6 @@ Trader *create_trader(int id, const char *bin_path)
         destroy_trader(trader);
         return NULL;
     }
-    // [PEX] Connected to /tmp/pe_exchange_0
     printf("[PEX] Connected to %s\n", pipe_exchange);
 
     trader->fd_trader = open(pipe_trader, O_RDONLY);
@@ -206,7 +210,6 @@ Trader *create_trader(int id, const char *bin_path)
         destroy_trader(trader);
         return NULL;
     }
-    // [PEX] Connected to /tmp/pe_trader_0
     printf("[PEX] Connected to %s\n", pipe_trader);
 
     return trader;
