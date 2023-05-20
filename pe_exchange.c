@@ -11,6 +11,36 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 
+Exchange *ex; // 全局变量
+
+int min(int a, int b)
+{
+    return a < b ? a : b;
+}
+
+void destroy_trader(Trader *trader)
+{
+    if (trader->bin_path)
+    {
+        free(trader->bin_path);
+    }
+    free(trader);
+}
+
+
+void destroy_exchange(Exchange *exchange)
+{
+    for (int i = 0; i < exchange->num_traders; i++)
+    {
+        destroy_trader(exchange->traders[i]);
+    }
+
+    free(exchange->products);
+    free(exchange->orders);
+    free(exchange);
+}
+
+
 Exchange *create_exchange(const char *product_file)
 {
 
@@ -73,18 +103,6 @@ Exchange *create_exchange(const char *product_file)
     printf("\n");
 
     return exchange;
-}
-
-void destroy_exchange(Exchange *exchange)
-{
-    for (int i = 0; i < exchange->num_traders; i++)
-    {
-        destroy_trader(exchange->traders[i]);
-    }
-
-    free(exchange->products);
-    free(exchange->orders);
-    free(exchange);
 }
 
 Trader *create_trader(int id, const char *bin_path)
@@ -188,26 +206,16 @@ Trader *create_trader(int id, const char *bin_path)
     return trader;
 }
 
-void destroy_trader(Trader *trader)
-{
-    if (trader->bin_path)
-    {
-        free(trader->bin_path);
-    }
-    free(trader);
-}
-
 void remove_trader(Exchange *exchange, pid_t pid)
 {
     for (int i = 0; i < exchange->num_traders; i++)
     {
         Trader *trader = exchange->traders[i];
-        if (trader > pid == pid)
+        if (trader-> pid == pid)
         {
             // 子进程已退出，打印消息
             printf("[PEX] Trader %d(pid %d) disconnected\n", trader->id, trader->pid);
             trader->disconnected = true;
-            return true;
         }
     }
     fprintf(stderr, "[PEX] Try to remove trader pid %d, but not found\n", pid);
@@ -215,8 +223,9 @@ void remove_trader(Exchange *exchange, pid_t pid)
 
 bool process_trader_commands(Exchange *exchange, Trader *trader)
 {
+    FILE *file_exchange = fdopen(trader->fd_exchange, "w");
     char command[1024];
-    if (fgets(command, sizeof(command), trader->fd_exchange) == NULL)
+    if (fgets(command, sizeof(command), file_exchange) == NULL)
     {
         fprintf(stderr, "Failed to read from named pipe, %d", trader->id);
         return false;
@@ -668,7 +677,6 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
     }
 }
 
-Exchange *ex; // 全局变量
 
 int main(int argc, char *argv[])
 {
@@ -703,7 +711,7 @@ int main(int argc, char *argv[])
     Trader **traders = malloc(sizeof(Trader *) * num_traders);
     for (int i = 0; i < num_traders; i++)
     {
-        traders[i] = create_trader(argv[i + 2], i);
+        traders[i] = create_trader(i, argv[i + 2]);
         if (!traders[i])
         {
             fprintf(stderr, "[PEX] Failed to create trader: %s\n", argv[i + 2]);

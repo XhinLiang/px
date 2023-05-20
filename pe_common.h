@@ -32,10 +32,10 @@ typedef struct
 typedef struct
 {
     int id;
-    pid_t pid;            // Trader进程的PID
-    char *bin_path;       // Trader binary的路径
-    int fd_exchange;   // 到交易所的管道文件描述符
-    int fd_trader; // 从交易所的管道文件描述符
+    pid_t pid;       // Trader进程的PID
+    char *bin_path;  // Trader binary的路径
+    int fd_exchange; // 到交易所的管道文件描述符
+    int fd_trader;   // 从交易所的管道文件描述符
     int balance;
     bool disconnected;
 } Trader;

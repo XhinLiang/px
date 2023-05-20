@@ -13,6 +13,16 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 
+int trader_id;
+int current_order_id = 1;
+
+// 为此交易者创建Named Pipes
+char pipe_exchange[PIPE_NAME_MAX_SIZE];
+char pipe_trader[PIPE_NAME_MAX_SIZE];
+
+int fd_exchange;
+int fd_trader;
+
 void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int quantity, int price)
 {
     char message[MESSAGE_BUFF_SIZE];
@@ -59,7 +69,6 @@ void process_message(pid_t exchange_pid, const char *message)
 
 void handle_sigusr1(int sig, siginfo_t *info, void *context)
 {
-    pid_t exchange_ = info->si_pid;
     char buffer[MESSAGE_BUFF_SIZE];
     int num_bytes = read(fd_trader, buffer, MESSAGE_BUFF_SIZE - 1);
     if (num_bytes > 0)
@@ -68,17 +77,6 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
         process_message(info->si_pid, buffer);
     }
 }
-
-int trader_id;
-
-// 为此交易者创建Named Pipes
-char pipe_exchange[PIPE_NAME_MAX_SIZE];
-char pipe_trader[PIPE_NAME_MAX_SIZE];
-
-int fd_exchange;
-int fd_trader;
-
-int current_order_id = 1;
 
 int main(int argc, char *argv[])
 {
