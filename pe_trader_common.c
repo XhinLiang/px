@@ -66,7 +66,7 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
     if (pid <= 0)
     {
         printf("[T%d]\tReceived SIGUSR1 from invalid pid: %d\n", trader_id, pid);
-        return;
+        pid = exchange_pid;
     }
     printf("[T%d]\tReceived SIGUSR1 from pid: %d\n", trader_id, pid);
     char buffer[MESSAGE_BUFF_SIZE];

@@ -23,6 +23,7 @@ void process_message(pid_t exchange_pid, const char *message)
         {
             printf("[T%d]\tExiting, for quantity = %d\n", get_trader_id(), quantity);
             sleep(5);
+            fflush(stdout);
             exit(0);
         }
     }

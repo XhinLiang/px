@@ -177,7 +177,7 @@ Trader *create_trader(int id, const char *bin_path)
         sprintf(pid_str, "%d", getpid());
         execl(trader->bin_path, trader->bin_path, trader_id_str, pid_str, (char *)NULL);
         fprintf(stderr, "[PEX]\tFailed to exec trader binary\n");
-        exit(EXIT_FAILURE);
+        return NULL;
     }
     else
     { // Parent process
@@ -260,7 +260,6 @@ void process_trader_commands(Exchange *exchange, Trader *trader)
     char command[1024];
     if (fgets(command, sizeof(command), file_exchange) == NULL)
     {
-        fprintf(stderr, "[PEX]\tFailed to read from named pipe, %d", trader->id);
         return;
     }
     // [T0] Parsing command: <BUY 0 GPU 30 500>
@@ -697,7 +696,13 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
     pid_t trader_pid = info->si_pid;
     if (trader_pid <= 0)
     {
-        printf("[PEX]\tERROR: Received invalid PID: %d\n", trader_pid);
+        printf("[PEX]\t Received invalid PID: %d, iterate all of the traders\n", trader_pid);
+        for (int i = 0; i < exg->num_traders; i++)
+        {
+            Trader *trader = exg->traders[i];
+            process_trader_commands(exg, trader);
+        }
+        pthread_mutex_unlock(&mutex); // 解锁
         return;
     }
     printf("[PEX]\tReceived SIGUSR1 from pid: %d\n", trader_pid);
@@ -715,11 +720,13 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
     if (trader == NULL)
     {
         printf("[PEX]\tERROR: Could not find trader with PID %d\n", trader_pid);
+        pthread_mutex_unlock(&mutex); // 解锁
         return;
     }
     printf("[PEX]\tFound trader %d with PID: %d sent signal\n", trader->id, trader_pid);
     process_trader_commands(exg, trader);
     pthread_mutex_unlock(&mutex); // 解锁
+    return;
 }
 
 void check_trader_status(Exchange *exchange)
@@ -743,6 +750,7 @@ void check_trader_status(Exchange *exchange)
             printf("[PEX]\tTrading completed\n");
             printf("[PEX]\tExchange fees collected: $%d\n", exchange->collected_fees);
             sleep(1);
+            fflush(stdout);
             exit(0);
             return;
         }
@@ -862,5 +870,6 @@ int main(int argc, char *argv[])
     pthread_join(thread, NULL);
 
     printf("[PEX]\tMarket closed unintentionally\n");
+    fflush(stdout);
     return 1;
 }
