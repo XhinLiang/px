@@ -256,12 +256,13 @@ void ack_message(Exchange *exchange, Trader *trader, char *command_type, int ord
 void process_trader_commands(Exchange *exchange, Trader *trader)
 {
     printf("[PEX]\tProcessing commands from trader %d\n", trader->id);
-    FILE *file_exchange = fdopen(trader->fd_trader, "r");
-    char command[1024];
-    if (fgets(command, sizeof(command), file_exchange) == NULL)
+    char command[MESSAGE_BUFF_SIZE];
+    int num_bytes = read(trader->fd_trader, command, MESSAGE_BUFF_SIZE - 1);
+    if (num_bytes <= 0)
     {
         return;
     }
+    command[num_bytes] = '\0'; // 添加字符串终止符
     // [T0] Parsing command: <BUY 0 GPU 30 500>
     char command_type[10];
     int order_id;

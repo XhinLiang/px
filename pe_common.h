@@ -15,10 +15,10 @@
 #include <sys/stat.h>
 
 #define MAX_TRADERS 10
-#define MAX_PRODUCTS 50
-#define MAX_ORDERS 500
-#define PIPE_NAME_MAX_SIZE 256
-#define MESSAGE_BUFF_SIZE 256
+#define MAX_PRODUCTS 500
+#define MAX_ORDERS 5000
+#define PIPE_NAME_MAX_SIZE 2560
+#define MESSAGE_BUFF_SIZE 2560
 #define MAX_PRICE 999999
 
 typedef enum
