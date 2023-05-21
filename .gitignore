@@ -4,3 +4,4 @@ pe_trader
 pe_trader_seller
 pe_exchange
 *.dSYM
+.DS_Store
