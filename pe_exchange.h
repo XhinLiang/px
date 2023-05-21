@@ -1,7 +1,6 @@
 #ifndef PE_EXCHANGE_H
 #define PE_EXCHANGE_H
 
-void mark_trader_disconnected(Exchange *exchange, pid_t pid);
 int compare_sell_orders(const void *a, const void *b);
 int compare_buy_orders(const void *a, const void *b);
 void match_orders(Exchange *exchange);

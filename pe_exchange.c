@@ -296,7 +296,7 @@ void process_trader_commands(Exchange *exchange, Trader *trader)
         {
             if (cancel_order(exchange, trader->id, order_id))
             {
-                ack_message(exchange, trader, command_type, order_id, product, qty, price);
+                ack_message(exchange, trader, command_type, order_id, product, 0, 0);
             }
             return;
         }
@@ -771,7 +771,6 @@ void *check_trader_status_intervally(void *arg)
 {
     while (1)
     {
-        printf("[PEX] Checking trader status...\n");
         check_trader_status(exg);
         // Sleep for 10 seconds
         sleep(10);
