@@ -3,6 +3,4 @@
 pe_trader
 pe_trader_seller
 pe_exchange
-pe_exchange.dSYM
-pe_trader.dSYM
-pe_trader_seller.dSYM
+*.dSYM
