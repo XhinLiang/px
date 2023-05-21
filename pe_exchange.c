@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <ctype.h>
 
 pthread_mutex_t mutex; // 定义互斥锁
 Exchange *exg;         // 全局变量
@@ -101,7 +102,7 @@ Exchange *create_exchange(const char *product_file)
     {
         printf("%s ", exchange->products[i]);
     }
-    printf("\n");
+    printf("[PEX]\t\n");
 
     return exchange;
 }
@@ -253,17 +254,8 @@ void ack_message(Exchange *exchange, Trader *trader, char *command_type, int ord
     }
 }
 
-void process_trader_commands(Exchange *exchange, Trader *trader)
+void process_trader_command(Exchange *exchange, Trader *trader, char *command)
 {
-    printf("[PEX]\tProcessing commands from trader %d\n", trader->id);
-    char command[MESSAGE_BUFF_SIZE];
-    int num_bytes = read(trader->fd_trader, command, MESSAGE_BUFF_SIZE - 1);
-    if (num_bytes <= 0)
-    {
-        return;
-    }
-    command[num_bytes] = '\0'; // 添加字符串终止符
-    // [T0] Parsing command: <BUY 0 GPU 30 500>
     char command_type[10];
     int order_id;
     char product[64];
@@ -307,6 +299,42 @@ void process_trader_commands(Exchange *exchange, Trader *trader)
     fprintf(stderr, "[PEX]\tFailed to parse command: %s", command);
 }
 
+void process_trader_commands(Exchange *exchange, Trader *trader)
+{
+    printf("[PEX]\tProcessing commands from trader %d\n", trader->id);
+    char buffer[MESSAGE_BUFF_SIZE];
+    int num_bytes = read(trader->fd_trader, buffer, MESSAGE_BUFF_SIZE - 1);
+    if (num_bytes <= 0)
+    {
+        printf("[PEX]\tRead %d bytes from trader %d\n", num_bytes, trader->id);
+        return;
+    }
+    printf("[PEX]\tRead from trader %d, %s\n", trader->id, buffer);
+
+    buffer[num_bytes] = '\0'; // add string terminator
+    char *message = strtok(buffer, ";");
+    while (message != NULL)
+    {
+        // Trim leading and trailing spaces
+        while (isspace((unsigned char)*message))
+        {
+            message++;
+        }
+        char *end = message + strlen(message) - 1;
+        while (end > message && isspace((unsigned char)*end))
+        {
+            end--;
+        }
+        *(end + 1) = '\0';
+
+        // Call message_handler
+        process_trader_command(exchange, trader, message);
+
+        // Get next token
+        message = strtok(NULL, ";");
+    }
+}
+
 int compare_sell_orders(const void *a, const void *b)
 {
     Order *order_a = *(Order **)a;
@@ -345,16 +373,19 @@ void match_orders(Exchange *exchange)
 
     while (true)
     {
+        printf("[PEX]\n");
         printf("[PEX]\tMatching orders, orders num: %d\n", exchange->num_orders);
-        bool deal = false;
+        Order *deal_sell_order = NULL;
+        Order *deal_buy_order = NULL;
         for (int i = 0; i < exchange->num_products; i++)
         {
-            if (deal)
+            if (deal_sell_order != NULL && deal_buy_order != NULL)
             {
                 break;
             }
             char *product = exchange->products[i];
-            printf("[PEX]\tMatching orders for product %s\n", product);
+
+            printf("[PEX]\t\tMatching for product %s\n", product);
 
             // 初始化 sell_orders & buy_orders
             memset(sell_orders, 0, max_orders_num * sizeof(Order *));
@@ -375,12 +406,11 @@ void match_orders(Exchange *exchange)
                     sell_orders[sell_orders_num++] = order;
                 }
             }
+            printf("[PEX]\t\t\tMatching %s, SELL orders: %d\n", product, sell_orders_num);
             if (sell_orders_num == 0)
             {
-                printf("[PEX]\tNo sell orders for product %s\n", product);
                 continue;
             }
-            printf("[PEX]\t%s Sell orders: %d\n", product, sell_orders_num);
 
             // 遍历 exchange->orders，把合适的放入 buy_orders，并更新 buy_orders_num
             for (int j = 0; j < exchange->num_orders; j++)
@@ -395,12 +425,11 @@ void match_orders(Exchange *exchange)
                     buy_orders[buy_orders_num++] = order;
                 }
             }
+            printf("[PEX]\t\t\tMatching %s, BUY orders: %d\n", product, buy_orders_num);
             if (buy_orders_num == 0)
             {
-                printf("[PEX]\tNo buy orders for product %s\n", product);
                 continue;
             }
-            printf("[PEX]\t%s Buy orders: %d\n", product, buy_orders_num);
 
             // 按价格排序
             qsort(sell_orders, sell_orders_num, sizeof(Order *), compare_sell_orders);
@@ -410,7 +439,7 @@ void match_orders(Exchange *exchange)
             for (int m = 0; m < sell_orders_num; m++)
             {
                 Order *sell_order = sell_orders[m];
-                if (deal)
+                if (deal_sell_order != NULL && deal_buy_order != NULL)
                 {
                     break;
                 }
@@ -419,18 +448,26 @@ void match_orders(Exchange *exchange)
                     Order *buy_order = buy_orders[n];
                     if (buy_order->price >= sell_order->price)
                     {
-                        deal_orders(exchange, product, buy_order, sell_order);
-                        deal = true;
+                        deal_sell_order = sell_order;
+                        deal_buy_order = buy_order;
                         break;
                     }
                 }
             }
         }
-        printf("[PEX]\tMatching orders completed, dealed: %d\n", deal);
-        if (!deal)
+        if (deal_sell_order != NULL && deal_buy_order != NULL)
         {
+            printf("[PEX]\tMatching orders completed, product: %s, deal_sell_order: %d, deal_buy_order: %d\n",
+                   deal_sell_order->product, deal_sell_order->id, deal_buy_order->id);
+            deal_orders(exchange, deal_buy_order->product, deal_buy_order, deal_sell_order);
+        }
+        else
+        {
+            printf("[PEX]\tMatching orders completed, no deal\n");
             break;
         }
+        printf("[PEX]\n");
+        report(exchange);
     }
 
     // 释放 sell_orders
@@ -490,8 +527,6 @@ void deal_orders(Exchange *exchange, char *product, Order *buy_order, Order *sel
     kill(buy_trader->pid, SIGUSR1);
     sleep(1);
     kill(sell_trader->pid, SIGUSR1);
-
-    report(exchange);
 }
 
 void report(Exchange *exchange)
@@ -551,6 +586,7 @@ void report(Exchange *exchange)
         for (int level = max_price; level >= min_price; level--)
         {
             int num_orders_at_level = 0;
+            int qty_at_level = 0;
 
             // Count the number of orders at the current level
             for (int j = 0; j < exchange->num_orders; j++)
@@ -563,6 +599,7 @@ void report(Exchange *exchange)
                 if (strcmp(order->product, product) == 0 && order->price == level)
                 {
                     num_orders_at_level++;
+                    qty_at_level += order->quantity;
                 }
             }
 
@@ -570,7 +607,7 @@ void report(Exchange *exchange)
             {
                 printf("[PEX]\t\t%s %d @ $%d (%d order%s)\n",
                        (level >= min_sell_price) ? "SELL" : "BUY",
-                       num_orders_at_level,
+                       qty_at_level,
                        level,
                        num_orders_at_level,
                        (num_orders_at_level > 1) ? "s" : "");
@@ -619,7 +656,7 @@ void report(Exchange *exchange)
             printf("%s %d ($%d), ", product, position, total_value);
         }
 
-        printf("\n");
+        printf("[PEX]\t\n");
     }
     printf("[PEX]\n");
 }

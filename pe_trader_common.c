@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <ctype.h>
 
 pthread_mutex_t mutex; // 定义互斥锁
 
@@ -41,7 +42,7 @@ int get_trader_id()
 void place_order(pid_t exchange_pid, OrderType order_type, const char *item, int quantity, int price)
 {
     char message[MESSAGE_BUFF_SIZE];
-    sprintf(message, "%s %d %s %d %d\n", order_type == BUY ? "BUY" : "SELL", current_order_id++, item, quantity, price);
+    sprintf(message, "%s %d %s %d %d;", order_type == BUY ? "BUY" : "SELL", current_order_id++, item, quantity, price);
     printf("[T%d]\tSending message: %s\n", trader_id, message);
     size_t message_len = strlen(message);
     sleep(1);
@@ -69,12 +70,27 @@ void handle_sigusr1(int sig, siginfo_t *info, void *context)
         pid = exchange_pid;
     }
     printf("[T%d]\tReceived SIGUSR1 from pid: %d\n", trader_id, pid);
+
     char buffer[MESSAGE_BUFF_SIZE];
     int num_bytes = read(fd_exchange, buffer, MESSAGE_BUFF_SIZE - 1);
     if (num_bytes > 0)
     {
-        buffer[num_bytes] = '\0'; // 添加字符串终止符
-        message_handler(pid, buffer);
+        buffer[num_bytes] = '\0'; // add string terminator
+        char* message = strtok(buffer, ";");
+        while(message != NULL) 
+        {
+            // Trim leading and trailing spaces
+            while(isspace((unsigned char)*message)) message++;
+            char *end = message + strlen(message) - 1;
+            while(end > message && isspace((unsigned char)*end)) end--;
+            *(end+1) = 0;
+
+            // Call message_handler
+            message_handler(pid, message);
+
+            // Get next token
+            message = strtok(NULL, ";");
+        }
     }
     pthread_mutex_unlock(&mutex); // 解锁
 }
