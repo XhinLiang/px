@@ -10,6 +10,7 @@
 - I designed two types of trader, they are based on the same codebase pe_trader_common.c
   - pe_trader.c is the auto trader which the assigment metion, it will place the BUY order according to the SELL message of exchange
   - pe_trader_seller.c is a auto sell trader, it will send the SELL message when it receive message from exchange
+  - So I modified the Makefile, too
 - I used mutex in exchange and trader, both for ensure that there will only be one signal processe in a same time
 - I used another single thread(pthread) in exchange
   - For checking if there are some trader processes exit, and then mark it as disconnected
@@ -19,3 +20,7 @@
 
 - Sometimes the exchange will exit itself before print the stat summary
   - I don't know why, maybe it's a segment fault??
+
+## General Tests
+
+Recompile all of the binaries and run will pe_trader & pe_trader_seller, you could `make && ./pe_exchange products.txt pe_trader pe_trader_seller`
